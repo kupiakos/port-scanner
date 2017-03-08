@@ -5,7 +5,6 @@ print('Initializing...')
 import argparse
 import logging
 
-from typing import Union, List, Tuple
 
 logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
 from scapy.all import *
@@ -13,19 +12,42 @@ from scapy.layers.inet import *
 
 SERVICE_NAMES = set(TCP_SERVICES.keys()) | set(UDP_SERVICES.keys())
 
-def syn_scan(hosts, ports):
-    print(hosts, ports)
-    targets = (IP(dst=hosts) / TCP(dport=ports, flags='S'))
-    print('Scanning', len(list(targets)), 'ports...')
-    found, not_found = sr(targets, timeout=.1)
+DEFAULT_TIMEOUT = .1
+
+def syn_scan(hosts, ports, timeout=DEFAULT_TIMEOUT):
+    host_ips = IP(dst=hosts)
+    targets = host_ips / TCP(sport=RandShort(), dport=ports, flags='S')
+    print('SYN scanning', len(list(targets)), 'ports on', len(list(host_ips)), 'hosts...')
+    found, not_found = sr(targets, timeout=timeout)
+    return found
+
+
+def icmp_scan(hosts, timeout=DEFAULT_TIMEOUT):
+    host_ips = IP(dst=hosts)
+    targets = host_ips / fuzz(ICMP(type='echo-request'))
+    print('Pinging', len(list(host_ips)), 'hosts...')
+    found, not_found = sr(targets, timeout=timeout)
+    return found
+
+
+def udp_scan(hosts, ports, timeout=DEFAULT_TIMEOUT):
+    # Does not have default payloads for known services configured...
+    host_ips = IP(dst=hosts)
+    targets = host_ips / UDP(sport=RandShort(), dport=ports) / b'hello'
+    print('UDP scanning', len(list(targets)), 'ports on', len(list(host_ips)), 'hosts...')
+    found, not_found = sr(targets, timeout=timeout)
     return found
 
 
 def port_display(sent, received):
     if 'ICMP' in sent:
-        return 'icmp', sent.dst, 'ping'
+        return 'icmp', sent.dst, 'up'
     if 'UDP' in sent:
-        return 'udp/%d' % sent.dport, sent.dst, 'open'
+        if 'ICMP' in received:
+            state = 'closed'
+        else:
+            state = 'open|filtered'
+        return 'udp/%d' % sent.dport, sent.dst, state
     if 'TCP' in sent:
         return ('tcp/%d' % sent.dport,
                 sent.dst,
@@ -37,7 +59,7 @@ def print_results(results: SndRcvList):
     results.make_lined_table(port_display)
 
 
-def parse_ports(val: str) -> List[Union[int, str, Tuple[int, int]]]:
+def parse_ports(val: str):
     ports = []
     for port_spec in val.split(','):
         port_spec = port_spec.strip().lower()
@@ -65,15 +87,32 @@ def main():
         help='The hosts to scan'
     )
     parser.add_argument(
-        '-p',
-        type=parse_ports,
-        required=True,
-        metavar='PORTS', dest='ports',
-        help='The ports to scan on each host'
+        '-S',
+        type=parse_ports, default=None, metavar='PORTS', dest='syn_scan',
+        help='TCP SYN scan on the given ports'
+    )
+    parser.add_argument(
+        '-I',
+        action='store_true', dest='icmp_scan',
+        help='ICMP Ping scan'
+    )
+    parser.add_argument(
+        '-U',
+        type=parse_ports, default=None, metavar='PORTS', dest='udp_scan',
+        help='UDP scan on the given ports (limited functionality)'
     )
     args = parser.parse_args()
-    results = syn_scan(args.hosts, args.ports)
-    print_results(results)
+    results = SndRcvList()
+    if args.icmp_scan:
+        results += icmp_scan(args.hosts)
+    if args.syn_scan is not None:
+        results += syn_scan(args.hosts, args.syn_scan)
+    if args.udp_scan is not None:
+        results += udp_scan(args.hosts, args.udp_scan)
+    if len(results) == 0:
+        print('No results - have you specified a scan?')
+    else:
+        print_results(results)
 
 
 if __name__ == '__main__':
