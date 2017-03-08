@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 
-print('Initializing...')
-
 import argparse
 import logging
 
@@ -81,10 +79,17 @@ def parse_ports(val: str):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
+    hosts_group = parser.add_mutually_exclusive_group(required=True)
+    hosts_group.add_argument(
         'hosts',
-        type=lambda x: [i.strip() for i in x.split(',')],
+        nargs='?',
+        type=lambda x: [i.strip() for i in x.split(',')], default=None,
         help='The hosts to scan'
+    )
+    hosts_group.add_argument(
+        '-i',
+        type=argparse.FileType('r'), default=None, metavar='FILE', dest='hosts_file',
+        help='An input file containing hosts to scan'
     )
     parser.add_argument(
         '-S',
@@ -102,13 +107,19 @@ def main():
         help='UDP scan on the given ports (limited functionality)'
     )
     args = parser.parse_args()
+    hosts = args.hosts
+    if hosts is None:
+        with args.hosts_file:
+            hosts = [host for line in args.hosts_file for host in line.strip().split(',')]
     results = SndRcvList()
+
     if args.icmp_scan:
-        results += icmp_scan(args.hosts)
+        results += icmp_scan(hosts)
     if args.syn_scan is not None:
-        results += syn_scan(args.hosts, args.syn_scan)
+        results += syn_scan(hosts, args.syn_scan)
     if args.udp_scan is not None:
-        results += udp_scan(args.hosts, args.udp_scan)
+        results += udp_scan(hosts, args.udp_scan)
+
     if len(results) == 0:
         print('No results - have you specified a scan?')
     else:
