@@ -112,6 +112,11 @@ def main():
         action='store_true', dest='quiet',
         help='Do not show the scapy summary while scanning'
     )
+    parser.add_argument(
+        '-t',
+        dest='timeout', metavar='TIMEOUT', type=float, default=DEFAULT_TIMEOUT,
+        help='Set the timeout for all operations, in seconds'
+    )
     args = parser.parse_args()
     if args.quiet:
         conf.verb = False
@@ -119,15 +124,16 @@ def main():
     if hosts is None:
         with args.hosts_file:
             hosts = [host for line in args.hosts_file for host in line.strip().split(',')]
+    timeout = args.timeout
     results = SndRcvList()
 
     host_ips = IP(dst=hosts)
     if args.icmp_scan:
-        results += icmp_scan(host_ips)
+        results += icmp_scan(host_ips, timeout=timeout)
     if args.syn_scan is not None:
-        results += syn_scan(host_ips, args.syn_scan)
+        results += syn_scan(host_ips, args.syn_scan, timeout=timeout)
     if args.udp_scan is not None:
-        results += udp_scan(host_ips, args.udp_scan)
+        results += udp_scan(host_ips, args.udp_scan, timeout=timeout)
 
     if len(results) == 0:
         print('No results - have you specified a scan?')
