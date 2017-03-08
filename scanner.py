@@ -4,7 +4,7 @@ import os
 import sys
 import argparse
 import logging
-
+from mako.template import Template
 
 logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
 from scapy.all import *
@@ -12,7 +12,7 @@ from scapy.layers.inet import *
 
 SERVICE_NAMES = set(TCP_SERVICES.keys()) | set(UDP_SERVICES.keys())
 
-DEFAULT_TIMEOUT = .1
+DEFAULT_TIMEOUT = .5
 
 def syn_scan(host_ips, ports, timeout=DEFAULT_TIMEOUT):
     targets = host_ips / TCP(sport=RandShort(), dport=ports, flags='S')
@@ -54,6 +54,13 @@ def port_display(sent, received):
 
 def print_results(results: SndRcvList):
     results.make_lined_table(port_display)
+
+
+def output_html(results: SndRcvList, out_file):
+    out_file.write(Template(filename='report_template.mako', strict_undefined=True).render(
+        response_format=port_display,
+        results=results,
+    ))
 
 
 def parse_ports(val: str):
@@ -117,6 +124,11 @@ def main():
         dest='timeout', metavar='TIMEOUT', type=float, default=DEFAULT_TIMEOUT,
         help='Set the timeout for all operations, in seconds'
     )
+    parser.add_argument(
+        '-o',
+        type=argparse.FileType('w'), default=None, metavar='FILE', dest='report',
+        help='Generate an HTML report'
+    )
     args = parser.parse_args()
     if args.quiet:
         conf.verb = False
@@ -139,6 +151,10 @@ def main():
         print('No results - have you specified a scan?')
     else:
         print_results(results)
+
+    if args.report is not None:
+        with args.report:
+            output_html(results, args.report)
 
 
 if __name__ == '__main__':
