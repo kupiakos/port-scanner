@@ -107,7 +107,14 @@ def main():
         type=parse_ports, default=None, metavar='PORTS', dest='udp_scan',
         help='UDP scan on the given ports (limited functionality)'
     )
+    parser.add_argument(
+        '-q',
+        action='store_true', dest='quiet',
+        help='Do not show the scapy summary while scanning'
+    )
     args = parser.parse_args()
+    if args.quiet:
+        conf.verb = False
     hosts = args.hosts
     if hosts is None:
         with args.hosts_file:
