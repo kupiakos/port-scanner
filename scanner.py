@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 
+import os
+import sys
 import argparse
 import logging
 
@@ -12,25 +14,22 @@ SERVICE_NAMES = set(TCP_SERVICES.keys()) | set(UDP_SERVICES.keys())
 
 DEFAULT_TIMEOUT = .1
 
-def syn_scan(hosts, ports, timeout=DEFAULT_TIMEOUT):
-    host_ips = IP(dst=hosts)
+def syn_scan(host_ips, ports, timeout=DEFAULT_TIMEOUT):
     targets = host_ips / TCP(sport=RandShort(), dport=ports, flags='S')
     print('SYN scanning', len(list(targets)), 'ports on', len(list(host_ips)), 'hosts...')
     found, not_found = sr(targets, timeout=timeout)
     return found
 
 
-def icmp_scan(hosts, timeout=DEFAULT_TIMEOUT):
-    host_ips = IP(dst=hosts)
+def icmp_scan(host_ips, timeout=DEFAULT_TIMEOUT):
     targets = host_ips / fuzz(ICMP(type='echo-request'))
     print('Pinging', len(list(host_ips)), 'hosts...')
     found, not_found = sr(targets, timeout=timeout)
     return found
 
 
-def udp_scan(hosts, ports, timeout=DEFAULT_TIMEOUT):
+def udp_scan(host_ips, ports, timeout=DEFAULT_TIMEOUT):
     # Does not have default payloads for known services configured...
-    host_ips = IP(dst=hosts)
     targets = host_ips / UDP(sport=RandShort(), dport=ports) / b'hello'
     print('UDP scanning', len(list(targets)), 'ports on', len(list(host_ips)), 'hosts...')
     found, not_found = sr(targets, timeout=timeout)
@@ -78,6 +77,8 @@ def parse_ports(val: str):
 
 
 def main():
+    if os.geteuid() != 0:
+        print('Warning: this script requires root privileges', file=sys.stderr)
     parser = argparse.ArgumentParser()
     hosts_group = parser.add_mutually_exclusive_group(required=True)
     hosts_group.add_argument(
@@ -113,12 +114,13 @@ def main():
             hosts = [host for line in args.hosts_file for host in line.strip().split(',')]
     results = SndRcvList()
 
+    host_ips = IP(dst=hosts)
     if args.icmp_scan:
-        results += icmp_scan(hosts)
+        results += icmp_scan(host_ips)
     if args.syn_scan is not None:
-        results += syn_scan(hosts, args.syn_scan)
+        results += syn_scan(host_ips, args.syn_scan)
     if args.udp_scan is not None:
-        results += udp_scan(hosts, args.udp_scan)
+        results += udp_scan(host_ips, args.udp_scan)
 
     if len(results) == 0:
         print('No results - have you specified a scan?')
